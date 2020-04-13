@@ -1,4 +1,4 @@
-module github.com/panwenbin/ghttpproxy
+module github.com/panwenbin/greverseproxy
 
 go 1.13
 

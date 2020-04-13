@@ -4,7 +4,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"github.com/panwenbin/ghttpclient"
-	"github.com/panwenbin/ghttpproxy/handlers"
+	"github.com/panwenbin/greverseproxy/handlers"
 	"log"
 	"net"
 	"net/http"
