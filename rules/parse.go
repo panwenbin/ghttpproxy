@@ -12,19 +12,31 @@ func Parse(ruleBytes []byte) error {
 		return err
 	}
 
-	OutMutex.Lock()
-	defer OutMutex.Unlock()
 	outR.OutRegexp, err = regexp.Compile(outR.Regexp)
 	if err != nil {
 		return err
 	}
+
+	return Apply(&outR)
+}
+
+func Apply(outR *OutRule) error {
+	var err error
+	if outR.OutRegexp == nil {
+		outR.OutRegexp, err = regexp.Compile(outR.Regexp)
+		if err != nil {
+			return err
+		}
+	}
+	OutMutex.Lock()
+	defer OutMutex.Unlock()
 	for i := range OutRules {
 		if OutRules[i].Regexp == outR.Regexp {
-			OutRules[i] = &outR
+			OutRules[i] = outR
 			return nil
 		}
 	}
 
-	OutRules = append(OutRules, &outR)
+	OutRules = append(OutRules, outR)
 	return nil
 }

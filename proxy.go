@@ -2,9 +2,12 @@ package main
 
 import (
 	"crypto/tls"
+	"encoding/json"
 	"fmt"
 	"github.com/panwenbin/ghttpclient"
 	"github.com/panwenbin/greverseproxy/handlers"
+	"github.com/panwenbin/greverseproxy/rules"
+	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
@@ -23,6 +26,30 @@ func init() {
 	CaServer = os.Getenv("CA_SERVER")
 	if CaServer == "" {
 		CaServer = DEFAULT_CA_SERVER
+	}
+
+	initRuleFilename := "init_rules.json"
+	_, err := os.Stat(initRuleFilename)
+	if err == nil {
+		rulesBytes, err := ioutil.ReadFile(initRuleFilename)
+		if err != nil {
+			log.Println(err)
+			return
+		}
+		initRules := make([]*rules.OutRule, 0)
+		err = json.Unmarshal(rulesBytes, &initRules)
+		if err != nil {
+			log.Println(err)
+			return
+		}
+
+		for i := range initRules {
+			err = rules.Apply(initRules[i])
+			if err != nil {
+				log.Println(err)
+				continue
+			}
+		}
 	}
 }
 
