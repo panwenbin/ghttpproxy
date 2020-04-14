@@ -7,15 +7,14 @@ import (
 	"errors"
 	"github.com/panwenbin/ghttpclient"
 	"github.com/panwenbin/ghttpclient/header"
+	"github.com/panwenbin/greverseproxy/rules"
 	"io"
 	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
-	"regexp"
 	"strconv"
 	"strings"
-	"sync"
 )
 
 // Hop-by-hop headers. These are removed when sent to the backend.
@@ -115,17 +114,6 @@ func All(writer http.ResponseWriter, request *http.Request) {
 	}
 }
 
-var outDomainMap = make(map[string]string, 0)
-var outRules = make([]*outRule, 0)
-var outMutex = sync.RWMutex{}
-
-type outRule struct {
-	Regexp    string `json:"regexp"`
-	OutRegexp *regexp.Regexp
-	OutType   string `json:"out_type"`
-	OutServer string `json:"out_server"`
-}
-
 type out struct {
 	Method         string      `json:"method"`
 	Uri            string      `json:"uri"`
@@ -133,35 +121,6 @@ type out struct {
 	RequestBody    string      `json:"request_body"`
 	ResponseHeader http.Header `json:"response_header"`
 	ResponseBody   string      `json:"response_body"`
-}
-
-func checkOut(request *http.Request) (string, string) {
-	uri := request.Host + request.RequestURI
-	outMutex.RLock()
-	for i := range outRules {
-		if outRules[i].OutRegexp.MatchString(uri) {
-			return outRules[i].OutType, outRules[i].OutServer
-		}
-	}
-
-	outSetting, ok := outDomainMap[request.Host]
-	if !ok {
-		outSetting, ok = outDomainMap["*"]
-	}
-	outType := "none"
-	outServer := ""
-	outMutex.RUnlock()
-	if ok {
-		splits := strings.SplitN(outSetting, ":", 2)
-		outType = splits[0]
-		outServer = splits[1]
-		if strings.Contains(outServer, "remote") {
-			remoteHost := strings.Split(request.RemoteAddr, ":")[0]
-			outServer = strings.Replace(outServer, "remote", remoteHost, 1)
-		}
-	}
-
-	return outType, outServer
 }
 
 func prepareOut(request *http.Request, response *http.Response, reqBody []byte, resBody []byte) []byte {
@@ -200,7 +159,7 @@ func proxy(response *http.Response, writer http.ResponseWriter, request *http.Re
 	if err != nil {
 		return errors.New("read body err: " + err.Error())
 	}
-	outType, outServer  := checkOut(request)
+	outType, outServer := rules.Check(request)
 	switch outType {
 	case "chan":
 		outBody := prepareOut(request, response, reqBody, resBody)
@@ -219,7 +178,7 @@ func proxy(response *http.Response, writer http.ResponseWriter, request *http.Re
 }
 
 func pass(response *http.Response, writer http.ResponseWriter, request *http.Request, reqBody []byte) error {
-	outType, outServer  := checkOut(request)
+	outType, outServer := rules.Check(request)
 	switch outType {
 	case "log":
 		outBody := prepareOut(request, response, reqBody, nil)
@@ -256,32 +215,14 @@ func pass(response *http.Response, writer http.ResponseWriter, request *http.Req
 func setting(writer http.ResponseWriter, request *http.Request) {
 	switch request.Method {
 	case "GET":
-		splits := strings.Split(request.RequestURI, "/")
-		if len(splits) == 3 {
-			domain := splits[1]
-			outType := splits[2]
-			outMutex.Lock()
-			switch outType {
-			case "none":
-				delete(outDomainMap, domain)
-			default:
-				outDomainMap[domain] = outType
-			}
-			outMutex.Unlock()
-			writer.Write([]byte("set " + domain + " : " + outType + "\n"))
-			return
-		} else {
-			outJson, err := json.Marshal(map[string]interface{}{
-				"out_rules": outRules,
-				"out_domains": outDomainMap,
-			})
-			if err != nil {
-				log.Println(err)
-				return
-			}
-			writer.Write(outJson)
+		outJson, err := json.Marshal(rules.OutRules)
+		if err != nil {
+			log.Println(err)
 			return
 		}
+		writer.Write(outJson)
+		writer.Write([]byte("\n"))
+		return
 	case "POST":
 		reqBody, err := ioutil.ReadAll(request.Body)
 		if err != nil {
@@ -290,31 +231,14 @@ func setting(writer http.ResponseWriter, request *http.Request) {
 			return
 		}
 
-		outR := outRule{}
-		err = json.Unmarshal(reqBody, &outR)
+		err = rules.Parse(reqBody)
 		if err != nil {
 			log.Println(err)
-			writer.Write([]byte("json unmarshal err"))
+			writer.Write([]byte(err.Error()))
 			return
 		}
 
-		outMutex.Lock()
-		defer outMutex.Unlock()
-		outR.OutRegexp, err = regexp.Compile(outR.Regexp)
-		if err != nil {
-			log.Println(err)
-			writer.Write([]byte("regexp err"))
-			return
-		}
-		for i:= range outRules {
-			if outRules[i].Regexp == outR.Regexp {
-				outRules[i] = &outR
-				writer.Write([]byte("set " + outR.Regexp + " : " + outR.OutType + "\n"))
-				return
-			}
-		}
-		outRules = append(outRules, &outR)
-		writer.Write([]byte("set " + outR.Regexp + " : " + outR.OutType + "\n"))
+		writer.Write([]byte("ok\n"))
 		return
 	}
 }
