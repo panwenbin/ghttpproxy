@@ -121,9 +121,10 @@ type out struct {
 	RequestBody    string      `json:"request_body"`
 	ResponseHeader http.Header `json:"response_header"`
 	ResponseBody   string      `json:"response_body"`
+	Group          string      `json:"group"`
 }
 
-func prepareOut(request *http.Request, response *http.Response, reqBody []byte, resBody []byte) []byte {
+func prepareOut(request *http.Request, response *http.Response, reqBody []byte, resBody []byte, group string) []byte {
 	o := out{
 		Method:         request.Method,
 		Uri:            request.Host + request.RequestURI,
@@ -131,6 +132,7 @@ func prepareOut(request *http.Request, response *http.Response, reqBody []byte, 
 		RequestBody:    string(reqBody),
 		ResponseHeader: response.Header,
 		ResponseBody:   string(resBody),
+		Group:          group,
 	}
 
 	outBody, _ := json.Marshal(o)
@@ -159,16 +161,16 @@ func proxy(response *http.Response, writer http.ResponseWriter, request *http.Re
 	if err != nil {
 		return errors.New("read body err: " + err.Error())
 	}
-	outType, outServer := rules.Check(request)
+	outType, outServer, group := rules.Check(request)
 	switch outType {
 	case "chan":
-		outBody := prepareOut(request, response, reqBody, resBody)
+		outBody := prepareOut(request, response, reqBody, resBody, group)
 		resBody, err = ghttpclient.PostJson("http://"+outServer+"/chan", outBody, nil).ReadBodyClose()
 		if err != nil {
 			log.Println(err)
 		}
 	case "log":
-		outBody := prepareOut(request, response, reqBody, resBody)
+		outBody := prepareOut(request, response, reqBody, resBody, group)
 		go ghttpclient.PostJson("http://"+outServer+"/log", outBody, nil).ReadBodyClose()
 	}
 	h.Set("Content-Length", strconv.Itoa(len(resBody)))
@@ -178,10 +180,10 @@ func proxy(response *http.Response, writer http.ResponseWriter, request *http.Re
 }
 
 func pass(response *http.Response, writer http.ResponseWriter, request *http.Request, reqBody []byte) error {
-	outType, outServer := rules.Check(request)
+	outType, outServer, group := rules.Check(request)
 	switch outType {
 	case "log":
-		outBody := prepareOut(request, response, reqBody, nil)
+		outBody := prepareOut(request, response, reqBody, nil, group)
 		go ghttpclient.PostJson("http://"+outServer+"/log", outBody, nil).ReadBodyClose()
 	}
 	defer response.Body.Close()

@@ -9,4 +9,5 @@ type OutRule struct {
 	OutRegexp *regexp.Regexp
 	OutType   string `json:"out_type"`
 	OutServer string `json:"out_server"`
+	Group     string `json:"group"`
 }
