@@ -86,7 +86,11 @@ func All(writer http.ResponseWriter, request *http.Request) {
 		writer.Write([]byte("read request body err"))
 		return
 	}
-	client := ghttpclient.NewClient().Url(scheme + "://" + request.Host + request.RequestURI).Headers(headers).NoRedirect(true)
+	client := ghttpclient.NewClient().
+		Url(scheme + "://" + request.Host + request.RequestURI).
+		Headers(headers).
+		NoRedirect(true).
+		SslSkipVerify(true)
 	switch request.Method {
 	case "GET":
 		client = client.Get()
