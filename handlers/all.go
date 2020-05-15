@@ -63,6 +63,9 @@ func All(writer http.ResponseWriter, request *http.Request) {
 		setting(writer, request)
 		return
 	}
+	if isLocalIp(request.RemoteAddr) {
+		return
+	}
 	headers := header.GHttpHeader{}
 	for k, vv := range request.Header {
 		for _, v := range vv {
